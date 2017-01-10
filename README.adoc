@@ -1,0 +1,24 @@
+== Neo4j Twitter Import for Community Graph (and others)
+
+Currently uses Python and iPython Notebook, the Twitter Search API via requests.
+
+Run the script and notebook server with these environment variables:
+
+.nb.sh
+----
+cat ../nb.sh 
+export NEO4J_URL=bolt://localhost
+export NEO4J_USER=neo4j
+export NEO4J_PASSWORD=****
+export TWITTER_BEARER='...'
+# export TWITTER_SEARCH='#neo4j'
+
+ipython notebook 
+----
+
+=== Data Model
+
+Uses the twitter part of this data model:
+
+image::https://github.com/community-graph/documentation/raw/master/community_graph.png[]
+
