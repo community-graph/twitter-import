@@ -16,9 +16,37 @@ export TWITTER_BEARER='...'
 ipython notebook 
 ----
 
+=== Approach
+
+* Use Twitter search API
+* Control direction of ingest with `catchUp: False` -> backward in history using max_id, `catchUp: True` -> newer tweets using since_id 
+* Optionally provide twitter search via env-param
+* Use idempotent Cypher statement to merge Tweets, Users, Tags
+
 === Data Model
 
-Uses the twitter part of this data model:
+Uses the Twitter part of this data model:
 
 image::https://github.com/community-graph/documentation/raw/master/community_graph.png[]
 
+=== TODO
+
+* store in json files and then import those
+* save a "hash" of the query used with the tweet, so we can compute "maxId" for different queries
+
+=== References
+
+* https://dev.twitter.com/rest/public/search
+* https://dev.twitter.com/rest/public/timelines (max_id and since_id explained)
+** Note watch out of maxId of retweeted / replied tweets, that can be much older
+* https://dev.twitter.com/rest/public/rate-limiting
+
+Neo4j & Twitter
+
+* https://neo4j.com/blog/oscon-twitter-graph/
+* https://github.com/neo4j-examples/twitter-graph-viz
+
+* http://www.markhneedham.com/blog/2015/03/11/pythonneo4j-finding-interesting-computer-sciency-people-to-follow-on-twitter/
+* http://opensourceconnections.com/blog/2013/11/27/quick-start-with-neo4j-using-your-twitter-data/
+* http://www.lyonwj.com/twizzard-a-tweet-recommender-system-using-neo4j
+* http://blog.bruggen.com/search/label/exporttweet
