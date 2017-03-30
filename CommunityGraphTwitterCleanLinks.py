@@ -1,3 +1,5 @@
+import socket
+
 import httplib
 import urlparse
 import boto3
@@ -17,24 +19,26 @@ def lambda_handler(event, context):
     neo4jUrl = os.environ.get('NEO4J_URL', "bolt://localhost")
     neo4jUser = os.environ.get('NEO4J_USER', "neo4j")
     neo4jPass = NEO4J_PASSWORD
-    bearerToken = TWITTER_BEARER
-
-    if len(bearerToken) == 0:
-        raise ("No Twitter Bearer token configured")
 
     driver = GraphDatabase.driver(neo4jUrl, auth=basic_auth(neo4jUser, neo4jPass))
 
     session = driver.session()
     result = session.run(
         "MATCH (link:Link) WHERE exists(link.short) RETURN id(link) as id, link.url as url LIMIT {limit}",
-        {"limit": 1000})
+        {"limit": 100})
     update = []
     rows = 0
     for record in result:
-        resolved = unshorten_url(record["url"])
-        rows = rows + 1
-        if resolved != record["url"]:
-            update += [{"id": record["id"], "url": resolved}]
+        try:
+            resolved = unshorten_url(record["url"])
+            rows += 1
+            if resolved != record["url"]:
+                update += [{"id": record["id"], "url": resolved}]
+        except socket.gaierror:
+            print("Failed to resolve {0}. Ignoring for now".format(record["url"]))
+        except socket.error:
+            print("Failed to connect to {0}. Ignoring for now".format(record["url"]))
+
     print("urls", len(update), "records", rows)
     result = session.run(
         "UNWIND {data} AS row MATCH (link) WHERE id(link) = row.id SET link.url = row.url REMOVE link.short",
@@ -47,7 +51,7 @@ def unshorten_url(url):
     if url == None or len(url) < 11:
         return url
     parsed = urlparse.urlparse(url)
-    h = httplib.HTTPConnection(parsed.netloc)
+    h = httplib.HTTPConnection(parsed.netloc, timeout=5)
     h.request('HEAD', parsed.path)
     response = h.getresponse()
     if response.status/100 == 3 and response.getheader('Location'):
@@ -62,7 +66,4 @@ def unshorten_url(url):
 
 
 if __name__ == "__main__":
-    NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', "test")
-    TWITTER_BEARER = os.environ.get('TWITTER_BEARER', "")
-
     lambda_handler(None, None)
