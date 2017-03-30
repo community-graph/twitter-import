@@ -8,20 +8,34 @@ import os
 from neo4j.v1 import GraphDatabase, basic_auth
 from base64 import b64decode
 
-if bool(os.environ.get('CREDENTIALS_ENCRYPTED', "")):
-    ENCRYPTED_NEO4J_PASSWORD = os.environ['NEO4J_PASSWORD']
-    NEO4J_PASSWORD = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_NEO4J_PASSWORD))['Plaintext']
-
-    ENCRYPTED_TWITTER_BEARER = os.environ['TWITTER_BEARER']
-    TWITTER_BEARER = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_TWITTER_BEARER))['Plaintext']
-
 def lambda_handler(event, context):
-    neo4jUrl = os.environ.get('NEO4J_URL', "bolt://localhost")
+    print("Event:", event)
+    version_updated = "Default (Updating public graph)"
+    NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', "test")
+    NEO4J_URL = os.environ.get('NEO4J_URL', "bolt://localhost")
+
+    if event and event.get("resources"):
+        if "CommunityGraphTwitterCleanLinksPublic" in event["resources"][0]:
+            version_updated = "Updating public graph"
+            ENCRYPTED_NEO4J_PASSWORD = os.environ['NEO4J_PASSWORD']
+            NEO4J_PASSWORD = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_NEO4J_PASSWORD))['Plaintext']
+            NEO4J_URL = os.environ.get('NEO4J_PUBLIC_URL')
+        elif "CommunityGraphTwitterCleanLinksPrivate" in event["resources"][0]:
+            version_updated = "Updating private graph"
+            ENCRYPTED_NEO4J_PASSWORD = os.environ['NEO4J_PRIVATE_PASSWORD']
+            NEO4J_PASSWORD = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_NEO4J_PASSWORD))['Plaintext']
+            NEO4J_URL = os.environ.get('NEO4J_PRIVATE_URL')
+
+    neo4jUrl = NEO4J_URL
     neo4jUser = os.environ.get('NEO4J_USER', "neo4j")
     neo4jPass = NEO4J_PASSWORD
 
-    driver = GraphDatabase.driver(neo4jUrl, auth=basic_auth(neo4jUser, neo4jPass))
+    print(version_updated)
+    tidy_links(neo4jUrl = neo4jUrl, neo4jUser = neo4jUser, neo4jPass = neo4jPass)
 
+
+def tidy_links(neo4jUrl, neo4jUser, neo4jPass):
+    driver = GraphDatabase.driver(neo4jUrl, auth=basic_auth(neo4jUser, neo4jPass))
     session = driver.session()
     result = session.run(
         "MATCH (link:Link) WHERE exists(link.short) RETURN id(link) as id, link.url as url LIMIT {limit}",
@@ -64,6 +78,8 @@ def unshorten_url(url):
     else:
         return url
 
-
 if __name__ == "__main__":
-    lambda_handler(None, None)
+    neo4jPass = os.environ.get('NEO4J_PASSWORD', "test")
+    neo4jUrl = os.environ.get('NEO4J_URL', "bolt://localhost")
+    neo4jUser = os.environ.get('NEO4J_USER', "neo4j")
+    tidy_links(neo4jUrl=neo4jUrl, neo4jUser=neo4jUser, neo4jPass=neo4jPass)

@@ -10,44 +10,38 @@ import boto3
 from base64 import b64decode
 
 def lambda_handler(event, context):
-    print("Event: {0}".format(event))
-    if os.environ.get('CREDENTIALS_ENCRYPTED'):
-        ENCRYPTED_TWITTER_BEARER = os.environ['TWITTER_BEARER']
-        TWITTER_BEARER = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_TWITTER_BEARER))['Plaintext']
+    print("Event:", event)
+    version_updated = "Default (Updating public graph)"
+    NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', "test")
+    NEO4J_URL = os.environ.get('NEO4J_URL', "bolt://localhost")
 
-        if event and event.get("resources"):
-            if "CommunityGraphImportPublic" in event["resources"][0]:
-                print("Updating public graph")
-                ENCRYPTED_NEO4J_PASSWORD = os.environ['NEO4J_PASSWORD']
-                NEO4J_PASSWORD = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_NEO4J_PASSWORD))['Plaintext']
-                NEO4J_URL = os.environ.get('NEO4J_PUBLIC_URL')
-            elif "CommunityGraphImportPrivate" in event["resources"][0]:
-                print("Updating private graph")
-                ENCRYPTED_NEO4J_PASSWORD = os.environ['NEO4J_PRIVATE_PASSWORD']
-                NEO4J_PASSWORD = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_NEO4J_PASSWORD))['Plaintext']
-                NEO4J_URL = os.environ.get('NEO4J_PRIVATE_URL')
-            else:
-                print("(Default) Updating public graph")
-                ENCRYPTED_NEO4J_PASSWORD = os.environ['NEO4J_PASSWORD']
-                NEO4J_PASSWORD = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_NEO4J_PASSWORD))['Plaintext']
-                NEO4J_URL = os.environ.get('NEO4J_URL', "bolt://localhost")
-        else:
-            print("(Default) Updating public graph")
+    ENCRYPTED_TWITTER_BEARER = os.environ['TWITTER_BEARER']
+    TWITTER_BEARER = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_TWITTER_BEARER))['Plaintext']
+
+    if event and event.get("resources"):
+        if "CommunityGraphTwitterImportPublic" in event["resources"][0]:
+            version_updated = "Updating public graph"
             ENCRYPTED_NEO4J_PASSWORD = os.environ['NEO4J_PASSWORD']
             NEO4J_PASSWORD = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_NEO4J_PASSWORD))['Plaintext']
-            NEO4J_URL = os.environ.get('NEO4J_URL', "bolt://localhost")
-    else:
-        NEO4J_PASSWORD = os.environ.get('NEO4J_PASSWORD', "test")
-        TWITTER_BEARER = os.environ.get('TWITTER_BEARER', "")
-        NEO4J_URL = os.environ.get('NEO4J_URL', "bolt://localhost")
+            NEO4J_URL = os.environ.get('NEO4J_PUBLIC_URL')
+        elif "CommunityGraphTwitterImportPrivate" in event["resources"][0]:
+            version_updated = "Updating private graph"
+            ENCRYPTED_NEO4J_PASSWORD = os.environ['NEO4J_PRIVATE_PASSWORD']
+            NEO4J_PASSWORD = boto3.client('kms').decrypt(CiphertextBlob=b64decode(ENCRYPTED_NEO4J_PASSWORD))['Plaintext']
+            NEO4J_URL = os.environ.get('NEO4J_PRIVATE_URL')
 
     neo4jPass = NEO4J_PASSWORD
     bearerToken = TWITTER_BEARER
     neo4jUrl = NEO4J_URL
     neo4jUser = os.environ.get('NEO4J_USER', "neo4j")
 
-    if len(bearerToken) == 0 :
-        raise("No Twitter Bearer token configured")
+    print(version_updated)
+    import_links(neo4jUrl=neo4jUrl, neo4jUser=neo4jUser, neo4jPass=neo4jPass, bearerToken=bearerToken)
+
+
+def import_links(neo4jUrl, neo4jUser, neo4jPass, bearerToken):
+    if len(bearerToken) == 0:
+        raise ("No Twitter Bearer token configured")
 
     driver = GraphDatabase.driver(neo4jUrl, auth=basic_auth(neo4jUser, neo4jPass))
 
@@ -193,4 +187,9 @@ def lambda_handler(event, context):
     session.close()
 
 if __name__ == "__main__":
-    lambda_handler(None, None)
+    neo4jPass = os.environ.get('NEO4J_PASSWORD', "test")
+    bearerToken = os.environ.get('TWITTER_BEARER', "")
+    neo4jUrl = os.environ.get('NEO4J_URL', "bolt://localhost")
+    neo4jUser = os.environ.get('NEO4J_USER', "neo4j")
+
+    import_links(neo4jUrl=neo4jUrl, neo4jUser=neo4jUser, neo4jPass=neo4jPass, bearerToken=bearerToken)
