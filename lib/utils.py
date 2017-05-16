@@ -1,4 +1,6 @@
 import time
+from base64 import b64decode
+
 import requests
 import urllib
 import boto3
@@ -151,6 +153,7 @@ def import_links(neo4jUrl, neo4jUser, neo4jPass, bearerToken, search):
             time.sleep(json['backoff'] + 5)
 
     session.close()
+
 
 def decrypt_value(encrypted):
     return boto3.client('kms').decrypt(CiphertextBlob=b64decode(encrypted))['Plaintext']
