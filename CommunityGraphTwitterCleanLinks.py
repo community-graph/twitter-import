@@ -1,11 +1,10 @@
-import socket
-
-import httplib
-import urlparse
-import boto3
+from urllib import urlencode
+from urlparse import urlparse, urlunparse, parse_qs
+from neo4j.v1 import GraphDatabase, basic_auth
 import os
 
-from neo4j.v1 import GraphDatabase, basic_auth
+import boto3
+
 from base64 import b64decode
 
 def lambda_handler(event, context):
@@ -31,55 +30,51 @@ def lambda_handler(event, context):
     neo4jPass = NEO4J_PASSWORD
 
     print(version_updated)
-    tidy_links(neo4jUrl = neo4jUrl, neo4jUser = neo4jUser, neo4jPass = neo4jPass)
+    clean_links(neo4jUrl = neo4jUrl, neo4jUser = neo4jUser, neo4jPass = neo4jPass)
 
 
-def tidy_links(neo4jUrl, neo4jUser, neo4jPass):
+def clean_links(neo4jUrl, neo4jUser, neo4jPass):
     driver = GraphDatabase.driver(neo4jUrl, auth=basic_auth(neo4jUser, neo4jPass))
-    session = driver.session()
-    result = session.run(
-        "MATCH (link:Link) WHERE exists(link.short) RETURN id(link) as id, link.url as url LIMIT {limit}",
-        {"limit": 100})
-    update = []
-    rows = 0
-    for record in result:
-        try:
-            resolved = unshorten_url(record["url"])
-            rows += 1
-            if resolved != record["url"]:
-                update += [{"id": record["id"], "url": resolved}]
-        except socket.gaierror:
-            print("Failed to resolve {0}. Ignoring for now".format(record["url"]))
-        except socket.error:
-            print("Failed to connect to {0}. Ignoring for now".format(record["url"]))
 
-    print("urls", len(update), "records", rows)
-    result = session.run(
-        "UNWIND {data} AS row MATCH (link) WHERE id(link) = row.id SET link.url = row.url REMOVE link.short",
-        {"data": update})
-    print(result.consume().counters)
+    query = "MATCH (l:Link) WHERE NOT EXISTS(l.cleanUrl) RETURN l, ID(l) AS internalId"
+
+    session = driver.session()
+    result = session.run(query)
+
+    updates = []
+    for row in result:
+        uri = row["l"]["url"]
+        if uri:
+            uri = uri.encode('utf-8')
+            updates.append({"id": row["internalId"], "clean": clean_uri(uri)})
+
+    print("Updates to apply", updates)
+
+    updateQuery = """\
+    UNWIND {updates} AS update
+    MATCH (l:Link) WHERE ID(l) = update.id
+    SET l.cleanUrl = update.clean
+    """
+
+    update_result = session.run(updateQuery, {"updates": updates})
+
+    print(update_result)
+
     session.close()
 
-def unshorten_url(url):
-    print(url)
-    if url == None or len(url) < 11:
-        return url
-    parsed = urlparse.urlparse(url)
-    h = httplib.HTTPConnection(parsed.netloc, timeout=5)
-    h.request('HEAD', parsed.path)
-    response = h.getresponse()
-    if response.status/100 == 3 and response.getheader('Location'):
-        loc = str(response.getheader('Location'))
-        print(url,parsed.netloc,loc,response.status)
-        if loc <> url and len(loc) <= 22:
-            return unshorten_url(loc)
-        else:
-            return loc
-    else:
-        return url
+
+def clean_uri(url):
+    u = urlparse(url)
+    query = parse_qs(u.query)
+
+    for param in ["utm_content", "utm_source", "utm_medium", "utm_campaign", "utm_term"]:
+        query.pop(param, None)
+
+    u = u._replace(query=urlencode(query, True))
+    return urlunparse(u)
 
 if __name__ == "__main__":
     neo4jPass = os.environ.get('NEO4J_PASSWORD', "test")
     neo4jUrl = os.environ.get('NEO4J_URL', "bolt://localhost")
     neo4jUser = os.environ.get('NEO4J_USER', "neo4j")
-    tidy_links(neo4jUrl=neo4jUrl, neo4jUser=neo4jUser, neo4jPass=neo4jPass)
+    clean_links(neo4jUrl=neo4jUrl, neo4jUser=neo4jUser, neo4jPass=neo4jPass)
