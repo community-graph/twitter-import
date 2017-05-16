@@ -11,6 +11,7 @@ for lib in "requests neo4j-driver bs4"; do
    pip2.7 install $lib -t $folder
 done
 cp ${lambda_name}.py $folder
+cp -r lib $folder/
 cd $folder; zip -r ../$file .; cd ..
 
 aws s3 cp $file s3://devrel-lambda-functions/
